@@ -195,6 +195,9 @@
   @media (max-width:520px){.grid2{grid-template-columns:1fr;}}
 
   .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px;}
+  .modal-actions.split{justify-content:space-between;}
+  .btn-finish{background:#2F6F5E;color:#fff;}
+  .btn-finish:hover{filter:brightness(1.1);}
 
   /* Avertissement doublon */
   .dup-card{
@@ -238,6 +241,15 @@
   .color-input-row{display:flex;align-items:center;gap:10px;margin-top:14px;}
   .color-input-row input[type=color]{width:44px;height:34px;padding:0;border:1px solid var(--line);border-radius:8px;cursor:pointer;}
 
+  .toast{
+    position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);
+    background:var(--ink);color:#fff;padding:10px 18px;border-radius:8px;font-size:13.5px;font-weight:600;
+    box-shadow:0 8px 24px rgba(0,0,0,.2);
+    opacity:0;pointer-events:none;transition:opacity .18s ease, transform .18s ease;
+    z-index:200;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
   footer.note{max-width:1100px;margin:0 auto;padding:0 24px 40px;color:var(--muted);font-size:12.5px;}
 </style>
 </head>
@@ -279,6 +291,7 @@
   <select id="filter-sort">
     <option value="maj">Trier : dernière mise à jour</option>
     <option value="nom">Trier : nom (A→Z)</option>
+    <option value="region">Trier : région (A→Z)</option>
     <option value="statut">Trier : statut</option>
   </select>
   <div class="stat" id="stat-line"></div>
@@ -293,6 +306,8 @@
 </main>
 
 <footer class="note">Astuce : avant d'ajouter un restaurant, l'outil vérifie automatiquement s'il existe déjà (par nom, téléphone ou email) pour éviter les doublons entre vous et votre associé.</footer>
+
+<div class="toast" id="toast">Statut mis à jour ✓</div>
 
 <!-- ================= MODALE : Ajout / Édition ================= -->
 <div class="overlay" id="overlay-form">
@@ -421,9 +436,12 @@
       <button class="btn btn-outline btn-sm" id="d-add-note">Ajouter</button>
     </div>
 
-    <div class="modal-actions">
+    <div class="modal-actions split">
       <button type="button" class="btn btn-danger" id="d-delete">Supprimer la fiche</button>
-      <button type="button" class="btn btn-outline" id="d-edit">Modifier les infos</button>
+      <div style="display:flex;gap:10px;">
+        <button type="button" class="btn btn-outline" id="d-edit">Modifier les infos</button>
+        <button type="button" class="btn btn-finish" id="d-finish">✓ Terminé</button>
+      </div>
     </div>
   </div>
 </div>
@@ -653,6 +671,13 @@ function fmtDate(iso){
 /* ---------------------------------------------------------------------
    Rendu de la liste
 --------------------------------------------------------------------- */
+function flashSaved(){
+  const t = document.getElementById("toast");
+  t.classList.add("show");
+  clearTimeout(t._timer);
+  t._timer = setTimeout(()=> t.classList.remove("show"), 1500);
+}
+
 let currentEditId = null;
 
 function populateFilters(){
@@ -704,6 +729,8 @@ function render(){
 
   if(sortBy === "nom"){
     list.sort((a,b)=> normalize(a.nom).localeCompare(normalize(b.nom)));
+  } else if(sortBy === "region"){
+    list.sort((a,b)=> normalize(a.region).localeCompare(normalize(b.region)) || normalize(a.nom).localeCompare(normalize(b.nom)));
   } else if(sortBy === "statut"){
     list.sort((a,b)=> (a.statut||"").localeCompare(b.statut||""));
   } else {
@@ -855,6 +882,34 @@ function showDuplicateWarning(existing){
    Modale Détail
 --------------------------------------------------------------------- */
 let currentDetailId = null;
+let historyExpanded = false;
+const HIST_VISIBLE = 5;
+
+function renderHistorique(hist){
+  const el = document.getElementById("d-historique");
+  if(!hist.length){
+    el.innerHTML = `<div style="color:var(--muted);font-size:13px;">Aucun historique pour l'instant.</div>`;
+    return;
+  }
+  const shown = historyExpanded ? hist : hist.slice(0, HIST_VISIBLE);
+  const rest = hist.length - shown.length;
+  let html = shown.map(h=>`
+    <div class="hist-item"><div class="date">${fmtDate(h.date)}</div><div class="txt">${escapeHtml(h.txt)}</div></div>
+  `).join("");
+  if(rest > 0){
+    html += `<button type="button" class="btn btn-outline btn-sm" id="hist-toggle" style="margin-top:4px;">Voir les ${rest} entrées précédentes ↓</button>`;
+  } else if(historyExpanded && hist.length > HIST_VISIBLE){
+    html += `<button type="button" class="btn btn-outline btn-sm" id="hist-toggle" style="margin-top:4px;">Réduire ↑</button>`;
+  }
+  el.innerHTML = html;
+  const toggle = document.getElementById("hist-toggle");
+  if(toggle){
+    toggle.addEventListener("click", ()=>{
+      historyExpanded = !historyExpanded;
+      renderHistorique(hist);
+    });
+  }
+}
 
 function openDetail(id){
   const r = store.restaurants.find(x=>x.id===id);
@@ -879,14 +934,16 @@ function openDetail(id){
     btn.addEventListener("click", ()=>{
       dataUpdate(id, {statut: btn.dataset.id});
       dataAppendHistorique(id, "Statut changé → " + statutInfo(btn.dataset.id).label);
+      flashSaved();
       setTimeout(()=>openDetail(id), 60);
     });
   });
 
+  document.getElementById("d-finish").onclick = ()=> closeOverlay("overlay-detail");
+
   const hist = [...(r.historique||[])].reverse();
-  document.getElementById("d-historique").innerHTML = hist.length ? hist.map(h=>`
-    <div class="hist-item"><div class="date">${fmtDate(h.date)}</div><div class="txt">${escapeHtml(h.txt)}</div></div>
-  `).join("") : `<div style="color:var(--muted);font-size:13px;">Aucun historique pour l'instant.</div>`;
+  historyExpanded = false;
+  renderHistorique(hist);
 
   document.getElementById("d-edit").onclick = ()=> openEditForm(r);
   document.getElementById("d-delete").onclick = ()=>{
