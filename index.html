@@ -269,6 +269,7 @@
     <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 13.5a1.65 1.65 0 000-3l1-1.7-1.7-1.7-1.7 1a1.65 1.65 0 00-3 0l-1-1.7-1.7 1.7 1 1.7a1.65 1.65 0 000 3l-1 1.7 1.7 1.7 1.7-1a1.65 1.65 0 003 0l1 1.7 1.7-1.7z" stroke-linecap="round" stroke-linejoin="round"/></svg>
   </button>
   <button class="btn btn-ghost" id="btn-export">Exporter</button>
+  <button class="btn btn-ghost" id="btn-import">Importer une liste</button>
   <button class="btn btn-accent" id="btn-new">+ Nouveau restaurant</button>
 </header>
 
@@ -445,6 +446,45 @@
   </div>
 </div>
 
+<!-- ================= MODALE : Import en masse ================= -->
+<div class="overlay" id="overlay-import">
+  <div class="modal wide">
+    <div class="modal-head">
+      <div>
+        <h2>Importer une liste</h2>
+        <p>Collez une liste au format : nom de la région seul sur une ligne, puis pour chaque restaurant le nom sur une ligne et le contact (email, "WhatsApp : numéro", ou une note libre) sur la ligne suivante. Séparez chaque bloc par une ligne vide, comme dans vos listes habituelles.</p>
+      </div>
+      <button class="close-x" data-close="overlay-import">✕</button>
+    </div>
+
+    <div id="import-step-paste">
+      <div class="field">
+        <textarea id="import-text" style="min-height:220px;font-family:monospace;font-size:13px;" placeholder="Sierre&#10;&#10;Brasserie Café de Paris&#10;info@cafedeparis-brasserie.ch&#10;&#10;Terra Brasil Grill&#10;infos@terrabrasil.ch"></textarea>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-outline" data-close="overlay-import">Annuler</button>
+        <button type="button" class="btn btn-accent" id="btn-analyse">Analyser</button>
+      </div>
+    </div>
+
+    <div id="import-step-preview" style="display:none;">
+      <div class="section-title">Aperçu avant import</div>
+      <div id="import-preview-list" style="max-height:340px;overflow-y:auto;"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-outline" id="btn-import-back">← Revoir le texte</button>
+        <button type="button" class="btn btn-accent" id="btn-import-confirm">Confirmer l'import</button>
+      </div>
+    </div>
+
+    <div id="import-step-result" style="display:none;">
+      <div class="dup-card" id="import-result-content"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-accent" data-close="overlay-import">Fermer</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ================= MODALE : Aide Firebase ================= -->
 <div class="overlay" id="overlay-help">
   <div class="modal wide">
@@ -477,12 +517,12 @@
    (voir README.md pour la marche à suivre pas à pas).
    ========================================================================= */
 const firebaseConfig = {
-  apiKey: "",
-  authDomain: "",
-  projectId: "",
-  storageBucket: "",
-  messagingSenderId: "",
-  appId: ""
+  apiKey: "AIzaSyCDYLz_1v9ZD_D8VY8iC8OaUz1_o-1wTGQ",
+  authDomain: "demarchage-ubereats.firebaseapp.com",
+  projectId: "demarchage-ubereats",
+  storageBucket: "demarchage-ubereats.firebasestorage.app",
+  messagingSenderId: "909729277579",
+  appId: "1:909729277579:web:5293ce487af176f42d168e"
 };
 /* ========================================================================= */
 
@@ -589,12 +629,13 @@ function normalize(s){
 }
 function normalizePhone(s){ return (s||"").replace(/[^0-9]/g,""); }
 
-function findDuplicate(data, excludeId){
+function findDuplicate(data, excludeId, list){
+  list = list || store.restaurants;
   const nomN = normalize(data.nom);
   const telN = normalizePhone(data.tel);
   const emailN = normalize(data.email);
-  return store.restaurants.find(r=>{
-    if(r.id === excludeId) return false;
+  return list.find(r=>{
+    if(r.id && r.id === excludeId) return false;
     if(nomN && normalize(r.nom) === nomN) return true;
     if(telN && telN.length>=6 && normalizePhone(r.tel) === telN) return true;
     if(emailN && normalize(r.email) === emailN) return true;
@@ -889,6 +930,134 @@ document.getElementById("btn-export").addEventListener("click", ()=>{
   a.download = "demarchage-export-" + new Date().toISOString().slice(0,10) + ".json";
   a.click();
   URL.revokeObjectURL(url);
+});
+
+/* ---------------------------------------------------------------------
+   Import en masse
+--------------------------------------------------------------------- */
+function stripParens(s){
+  return s.replace(/\(.*?\)/g, "").trim();
+}
+
+function isContactLine(s){
+  if(!s) return false;
+  if(/@/.test(s)) return true;
+  if(/whatsapp|instagram|contact|facebook|téléphone|tel\.?:/i.test(s)) return true;
+  if(/0\d{2}[\s.]?\d{3}[\s.]?\d{2}[\s.]?\d{2}/.test(s)) return true;
+  return false;
+}
+
+function parseImportText(text){
+  // Analyse ligne par ligne (tolère les lignes vides manquantes/en trop) :
+  // une ligne est le nom d'une région si la ligne suivante ne ressemble pas
+  // à une info de contact ; sinon on a une paire (nom du resto, contact).
+  const lines = text.split("\n").map(l=>l.trim()).filter(Boolean);
+  const items = [];
+  let currentRegion = "";
+  let i = 0;
+  while(i < lines.length){
+    const line = lines[i];
+    const next = lines[i+1];
+    if(next && isContactLine(next)){
+      const nom = line;
+      const rest = next;
+      const emailMatch = rest.match(/[\w.+-]+@[\w-]+\.[\w.-]+/);
+      const email = emailMatch ? emailMatch[0] : "";
+      const phoneMatch = rest.match(/0\d{2}[\s.]?\d{3}[\s.]?\d{2}[\s.]?\d{2}/);
+      const tel = phoneMatch ? phoneMatch[0] : "";
+      const isWhatsapp = /whatsapp/i.test(rest);
+      let canal = "";
+      if(email) canal = "Email";
+      else if(isWhatsapp) canal = "WhatsApp";
+      let notes = "";
+      if(!email && !tel){ notes = rest; }
+      items.push({ region: currentRegion, nom, email, tel, canal, notes });
+      i += 2;
+    } else {
+      currentRegion = stripParens(line);
+      i += 1;
+    }
+  }
+  return items;
+}
+
+let importParsedItems = [];
+
+function openImport(){
+  document.getElementById("import-text").value = "";
+  document.getElementById("import-step-paste").style.display = "block";
+  document.getElementById("import-step-preview").style.display = "none";
+  document.getElementById("import-step-result").style.display = "none";
+  openOverlay("overlay-import");
+}
+document.getElementById("btn-import").addEventListener("click", openImport);
+
+document.getElementById("btn-analyse").addEventListener("click", ()=>{
+  const text = document.getElementById("import-text").value;
+  importParsedItems = parseImportText(text);
+  if(importParsedItems.length === 0){
+    alert("Aucune fiche détectée dans ce texte. Vérifiez le format (nom de région seul, puis nom + contact par bloc séparé d'une ligne vide).");
+    return;
+  }
+  // Vérifie les doublons par rapport aux données déjà existantes + entre elles
+  let refList = [...store.restaurants];
+  const rows = importParsedItems.map(item=>{
+    const dup = findDuplicate(item, null, refList);
+    refList.push(item);
+    return { item, isDup: !!dup, dup };
+  });
+
+  document.getElementById("import-preview-list").innerHTML = rows.map(({item, isDup, dup})=>`
+    <div class="row" style="cursor:default;grid-template-columns:1fr auto;">
+      <div>
+        <div class="nom">${escapeHtml(item.nom)} <span style="font-weight:400;color:var(--muted);">— ${escapeHtml(item.region||"?")}</span></div>
+        <div class="sub">${escapeHtml(item.email||item.tel||item.notes||"—")}</div>
+      </div>
+      <div>
+        ${isDup
+          ? `<span class="badge" style="background:#B3432B22;color:#B3432B;"><span class="dot" style="background:#B3432B;"></span>Déjà existant</span>`
+          : `<span class="badge" style="background:#2F6F5E22;color:#2F6F5E;"><span class="dot" style="background:#2F6F5E;"></span>Nouveau</span>`}
+      </div>
+    </div>
+  `).join("");
+
+  importRowsCache = rows;
+  document.getElementById("import-step-paste").style.display = "none";
+  document.getElementById("import-step-preview").style.display = "block";
+});
+
+let importRowsCache = [];
+
+document.getElementById("btn-import-back").addEventListener("click", ()=>{
+  document.getElementById("import-step-paste").style.display = "block";
+  document.getElementById("import-step-preview").style.display = "none";
+});
+
+document.getElementById("btn-import-confirm").addEventListener("click", ()=>{
+  let added = 0, skipped = 0;
+  importRowsCache.forEach(({item, isDup})=>{
+    if(isDup){ skipped++; return; }
+    dataAdd({
+      nom: item.nom,
+      region: item.region,
+      tel: item.tel,
+      email: item.email,
+      site: "",
+      ubereats: "",
+      canal: item.canal,
+      contactePar: "",
+      statut: "a_contacter",
+      notes: item.notes,
+    });
+    added++;
+  });
+  document.getElementById("import-result-content").innerHTML = `
+    <div class="nom">Import terminé</div>
+    <div class="line"><b>${added}</b> nouvelle${added>1?"s":""} fiche${added>1?"s":""} ajoutée${added>1?"s":""}.</div>
+    <div class="line"><b>${skipped}</b> ignorée${skipped>1?"s":""} car déjà présente${skipped>1?"s":""} dans le carnet.</div>
+  `;
+  document.getElementById("import-step-preview").style.display = "none";
+  document.getElementById("import-step-result").style.display = "block";
 });
 
 /* ---------------------------------------------------------------------
