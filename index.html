@@ -1,0 +1,966 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Carnet de démarchage</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<!-- Firebase (utilisé seulement si vous renseignez votre config plus bas dans le fichier) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+<style>
+  :root{
+    --accent: #2F6F5E;
+    --accent-dark: #234f43;
+    --ink: #1C2333;
+    --paper: #F6F5F2;
+    --paper-raised: #FFFFFF;
+    --line: #E2DFD8;
+    --muted: #767065;
+    --danger: #B3432B;
+    --warn: #C08A2E;
+    --ok: #2F6F5E;
+    --radius: 10px;
+    --shadow: 0 1px 2px rgba(28,35,51,.06), 0 6px 20px rgba(28,35,51,.05);
+  }
+
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Inter',system-ui,sans-serif;
+    font-size:15px;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3{font-family:'Fraunces',serif;font-weight:600;margin:0;}
+  button{font-family:inherit;}
+  input,select,textarea{font-family:inherit;font-size:14px;}
+
+  /* ---------- Bannière mode local ---------- */
+  #local-banner{
+    display:none;
+    background:#3B2F1E;
+    color:#F1E7D2;
+    font-size:13px;
+    padding:9px 20px;
+    text-align:center;
+  }
+  #local-banner a{color:#F6D98B;}
+
+  /* ---------- Header ---------- */
+  header.top{
+    background:var(--ink);
+    color:#fff;
+    padding:18px 24px;
+    display:flex;
+    align-items:center;
+    gap:18px;
+    flex-wrap:wrap;
+  }
+  .brand{display:flex;align-items:center;gap:10px;margin-right:auto;}
+  .brand svg{flex-shrink:0;}
+  .brand h1{color:#fff;font-size:21px;letter-spacing:.2px;}
+  .brand span{display:block;font-size:12px;color:#B7BCC9;font-family:'Inter';margin-top:1px;}
+
+  .search-wrap{position:relative;flex:1;min-width:220px;max-width:420px;}
+  .search-wrap input{
+    width:100%;
+    padding:9px 12px 9px 34px;
+    border-radius:8px;
+    border:1px solid transparent;
+    background:rgba(255,255,255,.12);
+    color:#fff;
+    outline:none;
+  }
+  .search-wrap input::placeholder{color:#B7BCC9;}
+  .search-wrap input:focus{background:#fff;color:var(--ink);}
+  .search-wrap input:focus::placeholder{color:#9a958a;}
+  .search-wrap svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);opacity:.7;}
+  .search-wrap input:focus + svg{opacity:0;}
+
+  .btn{
+    border:none;
+    border-radius:8px;
+    padding:9px 16px;
+    cursor:pointer;
+    font-weight:600;
+    font-size:14px;
+    display:inline-flex;align-items:center;gap:7px;
+    transition:filter .12s ease, transform .05s ease;
+  }
+  .btn:active{transform:translateY(1px);}
+  .btn-accent{background:var(--accent);color:#fff;}
+  .btn-accent:hover{filter:brightness(1.08);}
+  .btn-ghost{background:rgba(255,255,255,.1);color:#fff;}
+  .btn-ghost:hover{background:rgba(255,255,255,.18);}
+  .btn-outline{background:transparent;border:1px solid var(--line);color:var(--ink);}
+  .btn-outline:hover{background:#efece5;}
+  .btn-danger{background:transparent;color:var(--danger);border:1px solid #e2c3b8;}
+  .btn-danger:hover{background:#fbeee9;}
+  .btn-sm{padding:6px 11px;font-size:13px;}
+  .icon-btn{background:transparent;border:none;cursor:pointer;color:inherit;padding:6px;border-radius:6px;display:inline-flex;}
+  .icon-btn:hover{background:rgba(255,255,255,.12);}
+
+  /* ---------- Barre de filtres ---------- */
+  .filters{
+    display:flex;gap:10px;align-items:center;flex-wrap:wrap;
+    padding:14px 24px;
+    border-bottom:1px solid var(--line);
+    background:var(--paper-raised);
+  }
+  .filters select{
+    padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:#fff;color:var(--ink);
+  }
+  .filters .stat{
+    font-size:13px;color:var(--muted);margin-left:auto;
+  }
+  .filters .stat b{color:var(--ink);}
+
+  /* ---------- Liste ---------- */
+  main{padding:20px 24px 60px;max-width:1100px;margin:0 auto;}
+  .empty{
+    text-align:center;padding:60px 20px;color:var(--muted);
+  }
+  .empty h3{color:var(--ink);margin-bottom:8px;}
+
+  .row{
+    display:grid;
+    grid-template-columns: 1fr 130px 170px 130px 40px;
+    gap:14px;
+    align-items:center;
+    background:var(--paper-raised);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:13px 16px;
+    margin-bottom:9px;
+    cursor:pointer;
+    box-shadow:var(--shadow);
+    transition:border-color .12s ease;
+  }
+  .row:hover{border-color:var(--accent);}
+  .row .nom{font-weight:600;}
+  .row .sub{font-size:12.5px;color:var(--muted);margin-top:2px;}
+  .row .region{font-size:13px;color:var(--muted);}
+  .badge{
+    display:inline-flex;align-items:center;gap:6px;
+    font-size:12.5px;font-weight:600;
+    padding:5px 10px;border-radius:20px;
+    white-space:nowrap;
+  }
+  .badge .dot{width:7px;height:7px;border-radius:50%;}
+  .row .maj{font-size:12.5px;color:var(--muted);text-align:right;}
+  .row .chevron{color:var(--muted);text-align:right;}
+
+  @media (max-width:760px){
+    .row{grid-template-columns:1fr auto;grid-template-areas:"nom badge" "region maj";}
+    .row .nom{grid-area:nom;}
+    .row .badge{grid-area:badge;justify-self:end;}
+    .row .region{grid-area:region;}
+    .row .maj{grid-area:maj;justify-self:end;}
+    .row .chevron{display:none;}
+  }
+
+  /* ---------- Modales ---------- */
+  .overlay{
+    position:fixed;inset:0;background:rgba(28,35,51,.45);
+    display:none;align-items:flex-start;justify-content:center;
+    padding:5vh 16px;overflow-y:auto;z-index:100;
+  }
+  .overlay.show{display:flex;}
+  .modal{
+    background:#fff;border-radius:14px;max-width:560px;width:100%;
+    box-shadow:0 20px 60px rgba(0,0,0,.25);
+    padding:26px 28px 24px;
+  }
+  .modal.wide{max-width:640px;}
+  .modal-head{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:18px;gap:10px;}
+  .modal-head h2{font-size:20px;}
+  .modal-head p{color:var(--muted);font-size:13px;margin-top:4px;}
+  .close-x{background:none;border:none;cursor:pointer;color:var(--muted);font-size:20px;line-height:1;padding:4px;}
+  .close-x:hover{color:var(--ink);}
+
+  .field{margin-bottom:14px;}
+  .field label{display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin-bottom:5px;}
+  .field input,.field select,.field textarea{
+    width:100%;padding:9px 11px;border-radius:8px;border:1px solid var(--line);outline:none;background:#fdfcfa;
+  }
+  .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--accent);background:#fff;}
+  .field textarea{resize:vertical;min-height:64px;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  @media (max-width:520px){.grid2{grid-template-columns:1fr;}}
+
+  .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px;}
+
+  /* Avertissement doublon */
+  .dup-card{
+    background:#FBF3E9;border:1px solid #ECD9BB;border-radius:10px;padding:14px 16px;margin:14px 0;
+  }
+  .dup-card .nom{font-weight:700;font-family:'Fraunces',serif;font-size:17px;}
+  .dup-card .line{font-size:13px;color:#5b5346;margin-top:3px;}
+
+  /* Fiche détail */
+  .detail-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;}
+  .detail-top h2{font-size:22px;}
+  .detail-top .region{color:var(--muted);font-size:14px;margin-top:3px;}
+  .info-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 20px;margin:18px 0;}
+  .info-grid .k{font-size:11.5px;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);}
+  .info-grid .v{font-size:14.5px;margin-top:2px;word-break:break-word;}
+  .info-grid .v a{color:var(--accent);text-decoration:none;}
+  .info-grid .v a:hover{text-decoration:underline;}
+  @media (max-width:520px){.info-grid{grid-template-columns:1fr;}}
+
+  .section-title{font-size:13px;font-weight:700;color:var(--muted);margin:20px 0 8px;}
+  .notes-box{background:#fdfcfa;border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:14px;white-space:pre-wrap;min-height:20px;}
+
+  .hist-item{border-left:2px solid var(--line);padding:2px 0 10px 14px;margin-left:3px;position:relative;}
+  .hist-item::before{content:"";position:absolute;left:-5px;top:5px;width:8px;height:8px;border-radius:50%;background:var(--accent);}
+  .hist-item .date{font-size:11.5px;color:var(--muted);}
+  .hist-item .txt{font-size:13.5px;margin-top:1px;}
+
+  .add-note-row{display:flex;gap:8px;margin-top:8px;}
+  .add-note-row input{flex:1;}
+
+  .status-pick{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;}
+  .status-pill{
+    border:1px solid var(--line);background:#fff;border-radius:20px;padding:6px 12px;font-size:12.5px;font-weight:600;cursor:pointer;
+  }
+  .status-pill.active{border-color:transparent;color:#fff;}
+
+  /* Réglages couleur */
+  .swatches{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0 4px;}
+  .swatch{width:34px;height:34px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px var(--line);cursor:pointer;}
+  .swatch.active{box-shadow:0 0 0 2px var(--ink);}
+  .color-input-row{display:flex;align-items:center;gap:10px;margin-top:14px;}
+  .color-input-row input[type=color]{width:44px;height:34px;padding:0;border:1px solid var(--line);border-radius:8px;cursor:pointer;}
+
+  footer.note{max-width:1100px;margin:0 auto;padding:0 24px 40px;color:var(--muted);font-size:12.5px;}
+</style>
+</head>
+<body>
+
+<div id="local-banner">
+  Mode local : ces données restent uniquement sur cet ordinateur / navigateur et ne sont pas partagées avec votre associé.
+  <a href="#" id="open-firebase-help">Voir comment activer le partage →</a>
+</div>
+
+<header class="top">
+  <div class="brand">
+    <svg width="30" height="30" viewBox="0 0 30 30" fill="none">
+      <circle cx="15" cy="15" r="14" stroke="currentColor" stroke-width="1.4" opacity=".35"/>
+      <path d="M10 8v14M10 8c0 3 3 3 3 6M17 8l3 14M17 8l-1 8h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <div>
+      <h1>Carnet de démarchage</h1>
+      <span id="count-line">0 fiche</span>
+    </div>
+  </div>
+
+  <div class="search-wrap">
+    <input id="search" type="text" placeholder="Chercher un nom, un numéro, un email, une région…">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+  </div>
+
+  <button class="icon-btn" id="btn-settings" title="Couleurs">
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 13.5a1.65 1.65 0 000-3l1-1.7-1.7-1.7-1.7 1a1.65 1.65 0 00-3 0l-1-1.7-1.7 1.7 1 1.7a1.65 1.65 0 000 3l-1 1.7 1.7 1.7 1.7-1a1.65 1.65 0 003 0l1 1.7 1.7-1.7z" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+  <button class="btn btn-ghost" id="btn-export">Exporter</button>
+  <button class="btn btn-accent" id="btn-new">+ Nouveau restaurant</button>
+</header>
+
+<div class="filters">
+  <select id="filter-region"><option value="">Toutes les régions</option></select>
+  <select id="filter-statut"><option value="">Tous les statuts</option></select>
+  <select id="filter-sort">
+    <option value="maj">Trier : dernière mise à jour</option>
+    <option value="nom">Trier : nom (A→Z)</option>
+    <option value="statut">Trier : statut</option>
+  </select>
+  <div class="stat" id="stat-line"></div>
+</div>
+
+<main>
+  <div id="list"></div>
+  <div class="empty" id="empty-state" style="display:none;">
+    <h3>Aucune fiche pour l'instant</h3>
+    <p>Cliquez sur « + Nouveau restaurant » pour ajouter votre premier contact.</p>
+  </div>
+</main>
+
+<footer class="note">Astuce : avant d'ajouter un restaurant, l'outil vérifie automatiquement s'il existe déjà (par nom, téléphone ou email) pour éviter les doublons entre vous et votre associé.</footer>
+
+<!-- ================= MODALE : Ajout / Édition ================= -->
+<div class="overlay" id="overlay-form">
+  <div class="modal wide">
+    <div class="modal-head">
+      <div>
+        <h2 id="form-title">Nouveau restaurant</h2>
+        <p>Les infos viennent souvent d'Uber Eats : nom, puis site / mail / téléphone trouvés en cherchant le restaurant.</p>
+      </div>
+      <button class="close-x" data-close="overlay-form">✕</button>
+    </div>
+    <form id="restaurant-form">
+      <div class="grid2">
+        <div class="field">
+          <label>Nom du restaurant *</label>
+          <input type="text" id="f-nom" required>
+        </div>
+        <div class="field">
+          <label>Région *</label>
+          <input type="text" id="f-region" list="region-list" required placeholder="Fribourg, Sion, Sierre…">
+          <datalist id="region-list"></datalist>
+        </div>
+      </div>
+      <div class="grid2">
+        <div class="field">
+          <label>Téléphone</label>
+          <input type="text" id="f-tel" placeholder="079 000 00 00">
+        </div>
+        <div class="field">
+          <label>Email</label>
+          <input type="email" id="f-email" placeholder="contact@restaurant.ch">
+        </div>
+      </div>
+      <div class="grid2">
+        <div class="field">
+          <label>Site web</label>
+          <input type="text" id="f-site" placeholder="www.restaurant.ch">
+        </div>
+        <div class="field">
+          <label>Lien Uber Eats</label>
+          <input type="text" id="f-ubereats" placeholder="lien de la page Uber Eats">
+        </div>
+      </div>
+      <div class="grid2">
+        <div class="field">
+          <label>Canal de contact prévu</label>
+          <select id="f-canal">
+            <option value="">—</option>
+            <option>Email</option>
+            <option>WhatsApp</option>
+            <option>Les deux</option>
+            <option>Téléphone</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Contacté par</label>
+          <input type="text" id="f-contactepar" list="auteur-list" placeholder="Votre prénom">
+          <datalist id="auteur-list"></datalist>
+        </div>
+      </div>
+      <div class="field">
+        <label>Statut</label>
+        <select id="f-statut"></select>
+      </div>
+      <div class="field">
+        <label>Notes</label>
+        <textarea id="f-notes" placeholder="Infos utiles, horaires d'appel, remarques…"></textarea>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-outline" data-close="overlay-form">Annuler</button>
+        <button type="submit" class="btn btn-accent" id="btn-save">Enregistrer</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ================= MODALE : Doublon détecté ================= -->
+<div class="overlay" id="overlay-dup">
+  <div class="modal">
+    <div class="modal-head">
+      <div>
+        <h2>⚠️ Ce restaurant existe déjà</h2>
+        <p>Quelqu'un l'a probablement déjà repéré ou contacté. Voici la fiche existante :</p>
+      </div>
+      <button class="close-x" data-close="overlay-dup">✕</button>
+    </div>
+    <div class="dup-card" id="dup-card-content"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-outline" data-close="overlay-dup">Annuler</button>
+      <button type="button" class="btn btn-outline" id="dup-force">Créer quand même (doublon volontaire)</button>
+      <button type="button" class="btn btn-accent" id="dup-open">Ouvrir la fiche existante</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= MODALE : Détail fiche ================= -->
+<div class="overlay" id="overlay-detail">
+  <div class="modal wide">
+    <div class="detail-top">
+      <div>
+        <h2 id="d-nom"></h2>
+        <div class="region" id="d-region"></div>
+      </div>
+      <button class="close-x" data-close="overlay-detail">✕</button>
+    </div>
+
+    <div class="section-title">Statut</div>
+    <div class="status-pick" id="d-status-pick"></div>
+
+    <div class="info-grid">
+      <div><div class="k">Téléphone</div><div class="v" id="d-tel">—</div></div>
+      <div><div class="k">Email</div><div class="v" id="d-email">—</div></div>
+      <div><div class="k">Site web</div><div class="v" id="d-site">—</div></div>
+      <div><div class="k">Uber Eats</div><div class="v" id="d-ubereats">—</div></div>
+      <div><div class="k">Canal prévu</div><div class="v" id="d-canal">—</div></div>
+      <div><div class="k">Contacté par</div><div class="v" id="d-contactepar">—</div></div>
+    </div>
+
+    <div class="section-title">Notes</div>
+    <div class="notes-box" id="d-notes">—</div>
+
+    <div class="section-title">Historique</div>
+    <div id="d-historique"></div>
+    <div class="add-note-row">
+      <input type="text" id="d-new-note" placeholder="Ajouter une entrée à l'historique (ex: relancé par WhatsApp le 14.09)…">
+      <button class="btn btn-outline btn-sm" id="d-add-note">Ajouter</button>
+    </div>
+
+    <div class="modal-actions">
+      <button type="button" class="btn btn-danger" id="d-delete">Supprimer la fiche</button>
+      <button type="button" class="btn btn-outline" id="d-edit">Modifier les infos</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= MODALE : Réglages couleur ================= -->
+<div class="overlay" id="overlay-settings">
+  <div class="modal">
+    <div class="modal-head">
+      <div>
+        <h2>Couleur de l'outil</h2>
+        <p>Choisissez une teinte ou une couleur personnalisée. Elle est mémorisée sur cet appareil.</p>
+      </div>
+      <button class="close-x" data-close="overlay-settings">✕</button>
+    </div>
+    <div class="swatches" id="swatches"></div>
+    <div class="color-input-row">
+      <input type="color" id="custom-color">
+      <span style="font-size:13px;color:var(--muted);">ou choisissez une couleur précise</span>
+    </div>
+  </div>
+</div>
+
+<!-- ================= MODALE : Aide Firebase ================= -->
+<div class="overlay" id="overlay-help">
+  <div class="modal wide">
+    <div class="modal-head">
+      <div><h2>Activer le partage entre associés</h2></div>
+      <button class="close-x" data-close="overlay-help">✕</button>
+    </div>
+    <p style="font-size:14px;">Tant que rien n'est configuré, chaque personne a ses propres données dans son navigateur. Pour que vous et votre associé voyiez la même liste en temps réel (et donc que les doublons soient détectés entre vous), il faut brancher une base de données gratuite (Firebase). Le détail complet, étape par étape, est dans le fichier <b>README.md</b> livré avec l'outil. En résumé :</p>
+    <ol style="font-size:14px;line-height:1.8;">
+      <li>Créer un projet gratuit sur <b>console.firebase.google.com</b></li>
+      <li>Activer « Firestore Database » (mode test)</li>
+      <li>Copier le bloc de configuration fourni par Firebase</li>
+      <li>Le coller dans <code>index.html</code>, à l'endroit indiqué « CONFIGURATION FIREBASE »</li>
+      <li>Republier le fichier sur GitHub → le partage est actif</li>
+    </ol>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-accent" data-close="overlay-help">Compris</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =========================================================================
+   CONFIGURATION FIREBASE
+   -------------------------------------------------------------------------
+   Tant que ceci n'est pas rempli, l'outil fonctionne en mode "local" :
+   chaque navigateur a ses propres données (non partagées).
+   Pour activer le partage en temps réel entre vous et votre associé,
+   remplacez l'objet ci-dessous par celui que Firebase vous donne
+   (voir README.md pour la marche à suivre pas à pas).
+   ========================================================================= */
+const firebaseConfig = {
+  apiKey: "",
+  authDomain: "",
+  projectId: "",
+  storageBucket: "",
+  messagingSenderId: "",
+  appId: ""
+};
+/* ========================================================================= */
+
+const STATUTS = [
+  { id: "a_contacter",      label: "À contacter",              color: "#767065" },
+  { id: "contacte_attente", label: "Contacté – en attente",     color: "#3568B0" },
+  { id: "relance",          label: "Relance nécessaire",        color: "#C08A2E" },
+  { id: "positif",          label: "Répondu – intéressé",       color: "#2F6F5E" },
+  { id: "negatif",          label: "Répondu – pas intéressé",   color: "#B3432B" },
+  { id: "client",           label: "Client Uber Eats",          color: "#8A5A2B" },
+];
+const REGIONS_SUGGESTIONS = ["Fribourg","Sion","Sierre","Crans-Montana","Martigny","Monthey","Bulle","Vevey"];
+
+function statutInfo(id){ return STATUTS.find(s=>s.id===id) || STATUTS[0]; }
+
+/* ---------------------------------------------------------------------
+   Couche de données : Firestore si configuré, sinon localStorage.
+--------------------------------------------------------------------- */
+let store = { mode: "local", restaurants: [] };
+let unsubscribe = null;
+
+function firebaseConfigured(){
+  return firebaseConfig.apiKey && firebaseConfig.projectId;
+}
+
+function loadLocal(){
+  try{ return JSON.parse(localStorage.getItem("demarchage_restaurants") || "[]"); }
+  catch(e){ return []; }
+}
+function saveLocal(list){
+  localStorage.setItem("demarchage_restaurants", JSON.stringify(list));
+}
+
+function initData(onChange){
+  if(firebaseConfigured()){
+    document.getElementById("local-banner").style.display = "none";
+    try{
+      firebase.initializeApp(firebaseConfig);
+      const db = firebase.firestore();
+      store.mode = "firestore";
+      store.db = db;
+      unsubscribe = db.collection("restaurants").onSnapshot(snap=>{
+        store.restaurants = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+        onChange();
+      }, err=>{
+        console.error(err);
+        alert("Erreur de connexion à Firebase : " + err.message);
+      });
+      return;
+    }catch(e){
+      console.error("Firebase mal configuré, retour au mode local.", e);
+    }
+  }
+  // Mode local
+  document.getElementById("local-banner").style.display = "block";
+  store.mode = "local";
+  store.restaurants = loadLocal();
+  onChange();
+}
+
+function dataAdd(data){
+  const now = new Date().toISOString();
+  const full = { ...data, dateCreation: now, dateMaj: now, historique: [{date: now, txt: "Fiche créée."}] };
+  if(store.mode === "firestore"){
+    store.db.collection("restaurants").add(full);
+  } else {
+    full.id = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
+    store.restaurants.push(full);
+    saveLocal(store.restaurants);
+    render();
+  }
+}
+function dataUpdate(id, patch){
+  const now = new Date().toISOString();
+  if(store.mode === "firestore"){
+    store.db.collection("restaurants").doc(id).update({ ...patch, dateMaj: now });
+  } else {
+    const r = store.restaurants.find(x=>x.id===id);
+    if(r){ Object.assign(r, patch, {dateMaj: now}); saveLocal(store.restaurants); render(); }
+  }
+}
+function dataAppendHistorique(id, txt){
+  const r = store.restaurants.find(x=>x.id===id);
+  if(!r) return;
+  const now = new Date().toISOString();
+  const hist = [...(r.historique||[]), {date: now, txt}];
+  dataUpdate(id, { historique: hist });
+}
+function dataDelete(id){
+  if(store.mode === "firestore"){
+    store.db.collection("restaurants").doc(id).delete();
+  } else {
+    store.restaurants = store.restaurants.filter(x=>x.id!==id);
+    saveLocal(store.restaurants);
+    render();
+  }
+}
+
+/* ---------------------------------------------------------------------
+   Utilitaires
+--------------------------------------------------------------------- */
+function normalize(s){
+  return (s||"").toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
+}
+function normalizePhone(s){ return (s||"").replace(/[^0-9]/g,""); }
+
+function findDuplicate(data, excludeId){
+  const nomN = normalize(data.nom);
+  const telN = normalizePhone(data.tel);
+  const emailN = normalize(data.email);
+  return store.restaurants.find(r=>{
+    if(r.id === excludeId) return false;
+    if(nomN && normalize(r.nom) === nomN) return true;
+    if(telN && telN.length>=6 && normalizePhone(r.tel) === telN) return true;
+    if(emailN && normalize(r.email) === emailN) return true;
+    return false;
+  });
+}
+
+function fmtDate(iso){
+  if(!iso) return "—";
+  const d = new Date(iso);
+  return d.toLocaleDateString("fr-CH", {day:"2-digit", month:"2-digit", year:"numeric"}) + " " +
+         d.toLocaleTimeString("fr-CH", {hour:"2-digit", minute:"2-digit"});
+}
+
+/* ---------------------------------------------------------------------
+   Rendu de la liste
+--------------------------------------------------------------------- */
+let currentEditId = null;
+
+function populateFilters(){
+  const regionSel = document.getElementById("filter-region");
+  const statutSel = document.getElementById("filter-statut");
+  const currentRegion = regionSel.value;
+  const currentStatut = statutSel.value;
+
+  const regions = Array.from(new Set(store.restaurants.map(r=>r.region).filter(Boolean))).sort();
+  regionSel.innerHTML = '<option value="">Toutes les régions</option>' +
+    regions.map(r=>`<option value="${escapeHtml(r)}">${escapeHtml(r)}</option>`).join("");
+  regionSel.value = currentRegion;
+
+  statutSel.innerHTML = '<option value="">Tous les statuts</option>' +
+    STATUTS.map(s=>`<option value="${s.id}">${s.label}</option>`).join("");
+  statutSel.value = currentStatut;
+
+  // datalist régions (suggestions + celles déjà utilisées)
+  const dl = document.getElementById("region-list");
+  const all = Array.from(new Set([...REGIONS_SUGGESTIONS, ...regions]));
+  dl.innerHTML = all.map(r=>`<option value="${escapeHtml(r)}">`).join("");
+
+  // datalist auteurs
+  const auteurs = Array.from(new Set(store.restaurants.map(r=>r.contactePar).filter(Boolean)));
+  document.getElementById("auteur-list").innerHTML = auteurs.map(a=>`<option value="${escapeHtml(a)}">`).join("");
+}
+
+function escapeHtml(s){
+  return (s||"").toString().replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+function render(){
+  populateFilters();
+
+  const q = normalize(document.getElementById("search").value);
+  const fRegion = document.getElementById("filter-region").value;
+  const fStatut = document.getElementById("filter-statut").value;
+  const sortBy = document.getElementById("filter-sort").value;
+
+  let list = store.restaurants.filter(r=>{
+    if(fRegion && r.region !== fRegion) return false;
+    if(fStatut && r.statut !== fStatut) return false;
+    if(q){
+      const hay = normalize([r.nom, r.tel, r.email, r.region, r.site, r.adresse].join(" "));
+      if(!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
+  if(sortBy === "nom"){
+    list.sort((a,b)=> normalize(a.nom).localeCompare(normalize(b.nom)));
+  } else if(sortBy === "statut"){
+    list.sort((a,b)=> (a.statut||"").localeCompare(b.statut||""));
+  } else {
+    list.sort((a,b)=> new Date(b.dateMaj||0) - new Date(a.dateMaj||0));
+  }
+
+  document.getElementById("count-line").textContent =
+    store.restaurants.length + (store.restaurants.length>1 ? " fiches" : " fiche");
+
+  const counts = {};
+  STATUTS.forEach(s=>counts[s.id]=0);
+  store.restaurants.forEach(r=>{ if(counts[r.statut]!==undefined) counts[r.statut]++; });
+  document.getElementById("stat-line").innerHTML =
+    STATUTS.map(s=>`<b>${counts[s.id]}</b> ${s.label}`).join(" &nbsp;·&nbsp; ");
+
+  const listEl = document.getElementById("list");
+  const emptyEl = document.getElementById("empty-state");
+  if(list.length === 0){
+    listEl.innerHTML = "";
+    emptyEl.style.display = store.restaurants.length===0 ? "block" : "block";
+    emptyEl.querySelector("h3").textContent = store.restaurants.length===0 ? "Aucune fiche pour l'instant" : "Aucun résultat";
+    emptyEl.querySelector("p").textContent = store.restaurants.length===0 ? "Cliquez sur « + Nouveau restaurant » pour ajouter votre premier contact." : "Essayez une autre recherche ou d'autres filtres.";
+    return;
+  }
+  emptyEl.style.display = "none";
+
+  listEl.innerHTML = list.map(r=>{
+    const st = statutInfo(r.statut);
+    return `
+    <div class="row" data-id="${r.id}">
+      <div>
+        <div class="nom">${escapeHtml(r.nom)}</div>
+        <div class="sub">${escapeHtml(r.tel||"")}${r.tel && r.email ? " · " : ""}${escapeHtml(r.email||"")}</div>
+      </div>
+      <div class="region">${escapeHtml(r.region||"")}</div>
+      <div><span class="badge" style="background:${st.color}22;color:${st.color};"><span class="dot" style="background:${st.color};"></span>${st.label}</span></div>
+      <div class="maj">${fmtDate(r.dateMaj)}</div>
+      <div class="chevron">→</div>
+    </div>`;
+  }).join("");
+
+  listEl.querySelectorAll(".row").forEach(el=>{
+    el.addEventListener("click", ()=> openDetail(el.dataset.id));
+  });
+}
+
+/* ---------------------------------------------------------------------
+   Modale Ajout / Édition
+--------------------------------------------------------------------- */
+function openOverlay(id){ document.getElementById(id).classList.add("show"); }
+function closeOverlay(id){ document.getElementById(id).classList.remove("show"); }
+
+document.querySelectorAll("[data-close]").forEach(btn=>{
+  btn.addEventListener("click", ()=> closeOverlay(btn.dataset.close));
+});
+document.querySelectorAll(".overlay").forEach(ov=>{
+  ov.addEventListener("click", (e)=>{ if(e.target === ov) ov.classList.remove("show"); });
+});
+
+function fillStatutSelect(selectEl, value){
+  selectEl.innerHTML = STATUTS.map(s=>`<option value="${s.id}">${s.label}</option>`).join("");
+  selectEl.value = value || STATUTS[0].id;
+}
+
+function openNewForm(){
+  currentEditId = null;
+  document.getElementById("form-title").textContent = "Nouveau restaurant";
+  document.getElementById("restaurant-form").reset();
+  fillStatutSelect(document.getElementById("f-statut"), "a_contacter");
+  openOverlay("overlay-form");
+  setTimeout(()=>document.getElementById("f-nom").focus(), 50);
+}
+
+function openEditForm(r){
+  currentEditId = r.id;
+  document.getElementById("form-title").textContent = "Modifier : " + r.nom;
+  document.getElementById("f-nom").value = r.nom || "";
+  document.getElementById("f-region").value = r.region || "";
+  document.getElementById("f-tel").value = r.tel || "";
+  document.getElementById("f-email").value = r.email || "";
+  document.getElementById("f-site").value = r.site || "";
+  document.getElementById("f-ubereats").value = r.ubereats || "";
+  document.getElementById("f-canal").value = r.canal || "";
+  document.getElementById("f-contactepar").value = r.contactePar || "";
+  document.getElementById("f-notes").value = r.notes || "";
+  fillStatutSelect(document.getElementById("f-statut"), r.statut);
+  closeOverlay("overlay-detail");
+  openOverlay("overlay-form");
+}
+
+document.getElementById("btn-new").addEventListener("click", openNewForm);
+
+let pendingFormData = null;
+
+document.getElementById("restaurant-form").addEventListener("submit", (e)=>{
+  e.preventDefault();
+  const data = {
+    nom: document.getElementById("f-nom").value.trim(),
+    region: document.getElementById("f-region").value.trim(),
+    tel: document.getElementById("f-tel").value.trim(),
+    email: document.getElementById("f-email").value.trim(),
+    site: document.getElementById("f-site").value.trim(),
+    ubereats: document.getElementById("f-ubereats").value.trim(),
+    canal: document.getElementById("f-canal").value,
+    contactePar: document.getElementById("f-contactepar").value.trim(),
+    statut: document.getElementById("f-statut").value,
+    notes: document.getElementById("f-notes").value.trim(),
+  };
+
+  if(!currentEditId){
+    const dup = findDuplicate(data, null);
+    if(dup){
+      pendingFormData = data;
+      showDuplicateWarning(dup);
+      return;
+    }
+    dataAdd(data);
+    closeOverlay("overlay-form");
+  } else {
+    dataUpdate(currentEditId, data);
+    closeOverlay("overlay-form");
+  }
+});
+
+function showDuplicateWarning(existing){
+  const st = statutInfo(existing.statut);
+  document.getElementById("dup-card-content").innerHTML = `
+    <div class="nom">${escapeHtml(existing.nom)}</div>
+    <div class="line">Région : ${escapeHtml(existing.region||"—")}</div>
+    <div class="line">Statut : <b style="color:${st.color}">${st.label}</b></div>
+    <div class="line">Contacté par : ${escapeHtml(existing.contactePar||"—")}</div>
+    <div class="line">Téléphone / email : ${escapeHtml(existing.tel||"—")} · ${escapeHtml(existing.email||"—")}</div>
+    <div class="line">Dernière mise à jour : ${fmtDate(existing.dateMaj)}</div>
+  `;
+  document.getElementById("dup-open").onclick = ()=>{
+    closeOverlay("overlay-dup");
+    closeOverlay("overlay-form");
+    openDetail(existing.id);
+  };
+  document.getElementById("dup-force").onclick = ()=>{
+    dataAdd(pendingFormData);
+    closeOverlay("overlay-dup");
+    closeOverlay("overlay-form");
+  };
+  openOverlay("overlay-dup");
+}
+
+/* ---------------------------------------------------------------------
+   Modale Détail
+--------------------------------------------------------------------- */
+let currentDetailId = null;
+
+function openDetail(id){
+  const r = store.restaurants.find(x=>x.id===id);
+  if(!r) return;
+  currentDetailId = id;
+
+  document.getElementById("d-nom").textContent = r.nom;
+  document.getElementById("d-region").textContent = r.region || "";
+  document.getElementById("d-tel").innerHTML = r.tel ? `<a href="tel:${r.tel}">${escapeHtml(r.tel)}</a>` : "—";
+  document.getElementById("d-email").innerHTML = r.email ? `<a href="mailto:${r.email}">${escapeHtml(r.email)}</a>` : "—";
+  document.getElementById("d-site").innerHTML = r.site ? `<a href="${r.site.startsWith('http')?r.site:'https://'+r.site}" target="_blank" rel="noopener">${escapeHtml(r.site)}</a>` : "—";
+  document.getElementById("d-ubereats").innerHTML = r.ubereats ? `<a href="${r.ubereats}" target="_blank" rel="noopener">Voir sur Uber Eats</a>` : "—";
+  document.getElementById("d-canal").textContent = r.canal || "—";
+  document.getElementById("d-contactepar").textContent = r.contactePar || "—";
+  document.getElementById("d-notes").textContent = r.notes || "—";
+
+  const pick = document.getElementById("d-status-pick");
+  pick.innerHTML = STATUTS.map(s=>`
+    <button type="button" class="status-pill ${s.id===r.statut?'active':''}" data-id="${s.id}" style="${s.id===r.statut?`background:${s.color};border-color:${s.color};`:''}">${s.label}</button>
+  `).join("");
+  pick.querySelectorAll(".status-pill").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      dataUpdate(id, {statut: btn.dataset.id});
+      dataAppendHistorique(id, "Statut changé → " + statutInfo(btn.dataset.id).label);
+      setTimeout(()=>openDetail(id), 60);
+    });
+  });
+
+  const hist = [...(r.historique||[])].reverse();
+  document.getElementById("d-historique").innerHTML = hist.length ? hist.map(h=>`
+    <div class="hist-item"><div class="date">${fmtDate(h.date)}</div><div class="txt">${escapeHtml(h.txt)}</div></div>
+  `).join("") : `<div style="color:var(--muted);font-size:13px;">Aucun historique pour l'instant.</div>`;
+
+  document.getElementById("d-edit").onclick = ()=> openEditForm(r);
+  document.getElementById("d-delete").onclick = ()=>{
+    if(confirm("Supprimer définitivement la fiche « " + r.nom + " » ?")){
+      dataDelete(id);
+      closeOverlay("overlay-detail");
+    }
+  };
+
+  openOverlay("overlay-detail");
+}
+
+document.getElementById("d-add-note").addEventListener("click", ()=>{
+  const input = document.getElementById("d-new-note");
+  const txt = input.value.trim();
+  if(!txt) return;
+  dataAppendHistorique(currentDetailId, txt);
+  input.value = "";
+  setTimeout(()=>openDetail(currentDetailId), 60);
+});
+document.getElementById("d-new-note").addEventListener("keydown", (e)=>{
+  if(e.key === "Enter"){ e.preventDefault(); document.getElementById("d-add-note").click(); }
+});
+
+/* ---------------------------------------------------------------------
+   Recherche / filtres
+--------------------------------------------------------------------- */
+document.getElementById("search").addEventListener("input", render);
+document.getElementById("filter-region").addEventListener("change", render);
+document.getElementById("filter-statut").addEventListener("change", render);
+document.getElementById("filter-sort").addEventListener("change", render);
+
+/* ---------------------------------------------------------------------
+   Export JSON
+--------------------------------------------------------------------- */
+document.getElementById("btn-export").addEventListener("click", ()=>{
+  const blob = new Blob([JSON.stringify(store.restaurants, null, 2)], {type:"application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "demarchage-export-" + new Date().toISOString().slice(0,10) + ".json";
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+/* ---------------------------------------------------------------------
+   Aide Firebase
+--------------------------------------------------------------------- */
+document.getElementById("open-firebase-help").addEventListener("click", (e)=>{
+  e.preventDefault();
+  openOverlay("overlay-help");
+});
+
+/* ---------------------------------------------------------------------
+   Réglages couleur
+--------------------------------------------------------------------- */
+const PRESET_COLORS = ["#2F6F5E","#B3432B","#8A5A2B","#3568B0","#7A4E9E","#C08A2E","#1C2333"];
+
+function hexToHsl(hex){
+  let r=parseInt(hex.slice(1,3),16)/255, g=parseInt(hex.slice(3,5),16)/255, b=parseInt(hex.slice(5,7),16)/255;
+  const max=Math.max(r,g,b), min=Math.min(r,g,b);
+  let h,s,l=(max+min)/2;
+  if(max===min){h=s=0;}
+  else{
+    const d=max-min;
+    s = l>0.5 ? d/(2-max-min) : d/(max+min);
+    switch(max){
+      case r: h=(g-b)/d+(g<b?6:0); break;
+      case g: h=(b-r)/d+2; break;
+      case b: h=(r-g)/d+4; break;
+    }
+    h/=6;
+  }
+  return [h*360,s*100,l*100];
+}
+function hslToHex(h,s,l){
+  s/=100; l/=100;
+  const k=n=>(n+h/30)%12;
+  const a=s*Math.min(l,1-l);
+  const f=n=>l-a*Math.max(-1,Math.min(k(n)-3,Math.min(9-k(n),1)));
+  const toHex=x=>Math.round(255*x).toString(16).padStart(2,"0");
+  return "#"+toHex(f(0))+toHex(f(8))+toHex(f(4));
+}
+function darken(hex, amount){
+  const [h,s,l] = hexToHsl(hex);
+  return hslToHex(h, s, Math.max(0,l-amount));
+}
+
+function applyAccent(hex){
+  document.documentElement.style.setProperty("--accent", hex);
+  document.documentElement.style.setProperty("--accent-dark", darken(hex, 12));
+  localStorage.setItem("demarchage_accent", hex);
+  document.getElementById("custom-color").value = hex;
+  document.querySelectorAll(".swatch").forEach(s=> s.classList.toggle("active", s.dataset.color.toLowerCase()===hex.toLowerCase()));
+}
+
+function initSwatches(){
+  const wrap = document.getElementById("swatches");
+  wrap.innerHTML = PRESET_COLORS.map(c=>`<div class="swatch" data-color="${c}" style="background:${c};"></div>`).join("");
+  wrap.querySelectorAll(".swatch").forEach(sw=>{
+    sw.addEventListener("click", ()=> applyAccent(sw.dataset.color));
+  });
+  document.getElementById("custom-color").addEventListener("input", (e)=> applyAccent(e.target.value));
+}
+
+document.getElementById("btn-settings").addEventListener("click", ()=> openOverlay("overlay-settings"));
+
+/* ---------------------------------------------------------------------
+   Démarrage
+--------------------------------------------------------------------- */
+initSwatches();
+const savedAccent = localStorage.getItem("demarchage_accent");
+if(savedAccent) applyAccent(savedAccent);
+
+initData(render);
+</script>
+</body>
+</html>
